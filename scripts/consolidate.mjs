@@ -10,11 +10,14 @@
 //   mapatlas  MapAtlas European Camera Index, signalements de conducteurs (CC BY 4.0, attribution à MapAtlas)
 // Sortie : radars.csv (confirmés) et candidats.csv (une seule source, ignorés par l'appli).
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
-export const SOURCES = ["gouv", "osm", "mapatlas"]; // ordre de priorité pour la position et la limite
+export const SOURCES = ["gouv", "osm", "mapatlas", "lufop"]; // ordre de priorité pour la position et la limite
+// Sources qui ne servent qu'à confirmer : leur position, leur limite et leur identifiant n'entrent dans aucun fichier publié
+// (licence non vérifiée ou incompatible avec l'ODbL, voir LICENSES.md).
+export const VOTE_ONLY = new Set(["lufop"]);
 
 const URLS = {
   overpass: ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"],
@@ -76,6 +79,27 @@ export function parseMapAtlas(json) {
   return out;
 }
 
+/**
+ * Lufop (POI Warner) : un fichier par catégorie, lignes `lon, lat, "nom"`. Le type et la limite sont dans le nom du fichier
+ * (`FRFixeFR90.csv`, `FRFeuRougeFR.csv`) ; chantiers, tronçons, passages à niveau, poids lourds, covoiturage, tunnels et zones
+ * temporaires sont ignorés. [files] : [{ name, text }].
+ */
+export function parseLufop(files) {
+  const out = [];
+  for (const { name, text } of files) {
+    const m = /^[A-Z]{2}(Fixe|FeuRouge)[A-Z]{2}(\d+)?\.csv$/i.exec(name);
+    if (!m) continue;
+    const type = m[1].toLowerCase() === "feurouge" ? "feu_rouge" : "fixe";
+    text.split(/\r?\n/).forEach((line, i) => {
+      const f = line.split(",");
+      if (f.length < 2) return;
+      const r = { src: "lufop", id: `${name}:${i + 1}`, lon: coord(f[0].trim()), lat: coord(f[1].trim()), type, limit: type === "fixe" ? speed(m[2]) : null };
+      if (valid(r)) out.push(r);
+    });
+  }
+  return out;
+}
+
 // --- Comparaison -----------------------------------------------------------------------------------------------
 
 const R = 6371008.8;
@@ -124,12 +148,18 @@ export function consolidate(points, { radiusM = 60, minSources = 2 } = {}) {
   });
   const confirmed = [];
   const candidates = [];
+  let voteOnlyAlone = 0;
   for (const members of groups.values()) {
     const sources = SOURCES.filter((s) => members.some((m) => m.src === s));
-    const best = (pick) => SOURCES.flatMap((s) => members.filter((m) => m.src === s)).find((m) => pick(m) != null);
+    const publishable = members.filter((m) => !VOTE_ONLY.has(m.src));
+    if (publishable.length === 0) {
+      voteOnlyAlone++; // vu par la seule source « vote » : rien à publier
+      continue;
+    }
+    const best = (pick) => SOURCES.flatMap((s) => publishable.filter((m) => m.src === s)).find((m) => pick(m) != null);
     const pos = best(() => 0);
     const limit = best((m) => m.limit)?.limit ?? null;
-    const gouv = members.find((m) => m.src === "gouv");
+    const gouv = publishable.find((m) => m.src === "gouv");
     const row = {
       id: gouv ? `fr-g${gouv.id}` : `fr-${scaled(pos.lat)}_${scaled(pos.lon)}`,
       lat: pos.lat,
@@ -141,7 +171,7 @@ export function consolidate(points, { radiusM = 60, minSources = 2 } = {}) {
     (sources.length >= minSources ? confirmed : candidates).push(row);
   }
   const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  return { confirmed: confirmed.sort(byId), candidates: candidates.sort(byId) };
+  return { confirmed: confirmed.sort(byId), candidates: candidates.sort(byId), voteOnlyAlone };
 }
 
 export const toCsv = (rows, withSources) =>
@@ -191,22 +221,30 @@ async function main() {
   const gouvBuf = await get(opt("gouv"), URLS.gouv);
   const mapBuf = await get(opt("mapatlas"), URLS.mapatlas);
 
+  // Lufop : dossier de fichiers CSV téléchargés à la main (--lufop), source « vote » seulement ; ignorée si absent.
+  const lufopFiles = opt("lufop")
+    ? await Promise.all(
+        (await readdir(opt("lufop"))).filter((n) => n.endsWith(".csv")).map(async (name) => ({ name, text: await readFile(join(opt("lufop"), name), "utf8") })),
+      )
+    : [];
   const points = [
     ...parseGouv(new TextDecoder("latin1").decode(gouvBuf)),
     ...parseOsm(JSON.parse(osmBuf.toString("utf8"))),
     ...parseMapAtlas(JSON.parse(mapBuf.toString("utf8"))),
+    ...parseLufop(lufopFiles),
   ];
   const count = (s) => points.filter((p) => p.src === s).length;
   // Chaque source est aussi republiée telle quelle, dans son dossier, sous sa propre licence (voir LICENSES.md).
   await mkdir(join(outDir, "sources"), { recursive: true });
-  for (const s of SOURCES) {
+  for (const s of SOURCES.filter((s) => !VOTE_ONLY.has(s))) {
     const rows = points.filter((p) => p.src === s).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     await writeFile(join(outDir, "sources", `${s}.csv`), toCsv(rows.map((r) => ({ ...r, sources: [s] })), false));
   }
-  const { confirmed, candidates } = consolidate(points, { radiusM, minSources });
+  const { confirmed, candidates, voteOnlyAlone } = consolidate(points, { radiusM, minSources });
   await writeFile(join(outDir, "radars.csv"), HEADER + toCsv(confirmed, false));
   await writeFile(join(outDir, "candidats.csv"), toCsv(candidates, true));
-  console.log(`sources : gouv=${count("gouv")} osm=${count("osm")} mapatlas=${count("mapatlas")}`);
+  console.log(`sources : gouv=${count("gouv")} osm=${count("osm")} mapatlas=${count("mapatlas")} lufop=${count("lufop")} (vote seul)`);
+  console.log(`vus par Lufop seul, non publiés : ${voteOnlyAlone}`);
   console.log(`rayon ${radiusM} m, ${minSources} sources minimum : ${confirmed.length} confirmés, ${candidates.length} candidats`);
 }
 

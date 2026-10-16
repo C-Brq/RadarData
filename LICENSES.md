@@ -12,6 +12,14 @@ Ce dépôt republie des données de plusieurs origines. **Chaque fichier garde l
 Les fichiers `sources/*.csv` ne reprennent que les champs lus dans chaque source (identifiant d'origine, position, type,
 limite). Le script `scripts/consolidate.mjs` est libre d'utilisation (domaine public).
 
+## Lufop (confirmation seulement)
+
+Les fichiers « POI Warner » de [Lufop](https://lufop.net) (radars fixes et feux rouges) comptent comme une source qui **confirme**
+un radar déjà vu par une autre source. Leurs positions, limites et identifiants **ne sont ni republiés ni utilisés** dans
+`radars.csv` ou `candidats.csv`, et un radar vu par Lufop seul n'y figure pas. La licence de Lufop est annoncée de façon
+différente selon leurs pages (ODbL 1.0 ou CC BY-SA 4.0) et n'est pas jointe aux archives : elle reste à vérifier avant toute
+republication. Lufop est une source participative, donc de fiabilité moyenne : elle ne suffit pas seule.
+
 ## Ajouter une source
 
 Une source sous licence « partage à l'identique » **incompatible** avec l'ODbL (par exemple CC BY-SA 4.0) s'ajoute dans son

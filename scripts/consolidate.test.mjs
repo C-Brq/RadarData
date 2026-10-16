@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { consolidate, parseGouv, parseMapAtlas, parseOsm, toCsv } from "./consolidate.mjs";
+import { consolidate, parseGouv, parseLufop, parseMapAtlas, parseOsm, toCsv } from "./consolidate.mjs";
 
 const p = (src, id, lat, lon, type = "fixe", limit = null) => ({ src, id, lat, lon, type, limit });
 // 0,0001° de latitude ≈ 11 m
@@ -75,6 +75,35 @@ test("lecture des trois formats", () => {
     ],
   });
   assert.deepEqual(map.map((r) => [r.id, r.type, r.limit, r.lat, r.lon]), [["A", "fixe", 50, 45, 5], ["B", "feu_rouge", null, 45, 5]]);
+});
+
+test("Lufop : type et limite lus dans le nom du fichier, catégories hors radars ignorées", () => {
+  const l = parseLufop([
+    { name: "FRFixeFR90.csv", text: '1.5, 46.9, "FR Radar Fixe FR 90"\n2.5, 47.9, "x"\n' },
+    { name: "FRFeuRougeFR.csv", text: '5.6, 43.3, "FR Radar Feu Rouge FR"\n' },
+    { name: "FRChantierFR.csv", text: '1, 2, "chantier"\n' },
+    { name: "FRTronconDebutFR.csv", text: '1, 2, "troncon"\n' },
+    { name: "FRFixeFRPassageNiveau.csv", text: '1, 2, "passage a niveau"\n' },
+    { name: "BEFixeBE50.csv", text: '4.3, 50.8, "BE"\n' },
+  ]);
+  assert.deepEqual(l.map((r) => [r.type, r.limit, r.lon, r.lat]), [
+    ["fixe", 90, 1.5, 46.9], ["fixe", 90, 2.5, 47.9], ["feu_rouge", null, 5.6, 43.3], ["fixe", 50, 4.3, 50.8],
+  ]);
+});
+
+test("une source « vote » confirme mais ne fournit ni position, ni limite, ni identifiant, et n'est jamais publiée seule", () => {
+  const { confirmed, candidates, voteOnlyAlone } = consolidate([
+    p("osm", "1", 45, 5, "fixe", null),
+    p("lufop", "L1", 45.00003, 5, "fixe", 90),
+    p("lufop", "L2", 46, 6),
+  ]);
+  assert.equal(confirmed.length, 1);
+  assert.equal(confirmed[0].lat, 45);
+  assert.equal(confirmed[0].limit, null);
+  assert.ok(!confirmed[0].id.includes("L1"));
+  assert.deepEqual(confirmed[0].sources, ["osm", "lufop"]);
+  assert.equal(candidates.length, 0);
+  assert.equal(voteOnlyAlone, 1);
 });
 
 test("le CSV respecte le format lu par l'appli", () => {
