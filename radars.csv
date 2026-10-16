@@ -1,0 +1,7 @@
+# Radars de RadarOverlay. Une ligne par radar. Colonnes :
+#   id        identifiant unique et stable (lettres, chiffres, tirets)
+#   lat,lon   position WGS84, au moins 5 décimales
+#   type      fixe (défaut) ou feu_rouge
+#   maxspeed  limite en km/h au radar (vide = inconnue)
+#   direction cap de la circulation surveillée en degrés (0-360) ou point cardinal N, NE, E... (vide = les deux sens)
+id,lat,lon,type,maxspeed,direction
