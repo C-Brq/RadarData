@@ -96,7 +96,7 @@ test("une source « vote » confirme mais ne fournit ni position, ni limite, ni 
     p("osm", "1", 45, 5, "fixe", null),
     p("lufop", "L1", 45.00003, 5, "fixe", 90),
     p("lufop", "L2", 46, 6),
-  ]);
+  ], { voteOnly: new Set(["lufop"]) });
   assert.equal(confirmed.length, 1);
   assert.equal(confirmed[0].lat, 45);
   assert.equal(confirmed[0].limit, null);

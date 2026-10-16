@@ -15,9 +15,8 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
 export const SOURCES = ["gouv", "osm", "mapatlas", "lufop"]; // ordre de priorité pour la position et la limite
-// Sources qui ne servent qu'à confirmer : leur position, leur limite et leur identifiant n'entrent dans aucun fichier publié
-// (licence non vérifiée ou incompatible avec l'ODbL, voir LICENSES.md).
-export const VOTE_ONLY = new Set(["lufop"]);
+// Sources republiées telles que livrées dans leur propre dossier (sources/<nom>/), sans fichier normalisé dans sources/.
+const RAW_REPUBLISHED = new Set(["lufop"]);
 
 const URLS = {
   overpass: ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"],
@@ -117,7 +116,7 @@ export function distanceM(a, b) {
  * Regroupe les points de même type à moins de [radiusM] mètres (liaison transitive) ; un groupe confirmé compte au moins
  * [minSources] sources différentes. Deux points d'une même source ne se confirment pas entre eux.
  */
-export function consolidate(points, { radiusM = 60, minSources = 2 } = {}) {
+export function consolidate(points, { radiusM = 60, minSources = 2, voteOnly = new Set() } = {}) {
   const cell = Math.max(radiusM, 1) / 111_000; // degrés de latitude ; la longitude est élargie plus bas
   const key = (lat, lon, dLat, dLon) => `${Math.floor(lat / cell) + dLat}:${Math.floor((lon * Math.cos((lat * Math.PI) / 180)) / cell) + dLon}`;
   const grid = new Map();
@@ -151,7 +150,7 @@ export function consolidate(points, { radiusM = 60, minSources = 2 } = {}) {
   let voteOnlyAlone = 0;
   for (const members of groups.values()) {
     const sources = SOURCES.filter((s) => members.some((m) => m.src === s));
-    const publishable = members.filter((m) => !VOTE_ONLY.has(m.src));
+    const publishable = members.filter((m) => !voteOnly.has(m.src)); // [voteOnly] : sources qui confirment sans rien publier
     if (publishable.length === 0) {
       voteOnlyAlone++; // vu par la seule source « vote » : rien à publier
       continue;
@@ -221,12 +220,12 @@ async function main() {
   const gouvBuf = await get(opt("gouv"), URLS.gouv);
   const mapBuf = await get(opt("mapatlas"), URLS.mapatlas);
 
-  // Lufop : dossier de fichiers CSV téléchargés à la main (--lufop), source « vote » seulement ; ignorée si absent.
-  const lufopFiles = opt("lufop")
-    ? await Promise.all(
-        (await readdir(opt("lufop"))).filter((n) => n.endsWith(".csv")).map(async (name) => ({ name, text: await readFile(join(opt("lufop"), name), "utf8") })),
-      )
-    : [];
+  // Lufop : fichiers CSV « POI Warner » téléchargés à la main, versionnés dans sources/lufop (ou --lufop <dossier>).
+  const lufopDir = opt("lufop", join(outDir, "sources", "lufop"));
+  const lufopFiles = await readdir(lufopDir).then(
+    (names) => Promise.all(names.filter((n) => n.endsWith(".csv")).map(async (name) => ({ name, text: await readFile(join(lufopDir, name), "utf8") }))),
+    () => [],
+  );
   const points = [
     ...parseGouv(new TextDecoder("latin1").decode(gouvBuf)),
     ...parseOsm(JSON.parse(osmBuf.toString("utf8"))),
@@ -236,15 +235,14 @@ async function main() {
   const count = (s) => points.filter((p) => p.src === s).length;
   // Chaque source est aussi republiée telle quelle, dans son dossier, sous sa propre licence (voir LICENSES.md).
   await mkdir(join(outDir, "sources"), { recursive: true });
-  for (const s of SOURCES.filter((s) => !VOTE_ONLY.has(s))) {
+  for (const s of SOURCES.filter((s) => !RAW_REPUBLISHED.has(s))) {
     const rows = points.filter((p) => p.src === s).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     await writeFile(join(outDir, "sources", `${s}.csv`), toCsv(rows.map((r) => ({ ...r, sources: [s] })), false));
   }
-  const { confirmed, candidates, voteOnlyAlone } = consolidate(points, { radiusM, minSources });
+  const { confirmed, candidates } = consolidate(points, { radiusM, minSources });
   await writeFile(join(outDir, "radars.csv"), HEADER + toCsv(confirmed, false));
   await writeFile(join(outDir, "candidats.csv"), toCsv(candidates, true));
-  console.log(`sources : gouv=${count("gouv")} osm=${count("osm")} mapatlas=${count("mapatlas")} lufop=${count("lufop")} (vote seul)`);
-  console.log(`vus par Lufop seul, non publiés : ${voteOnlyAlone}`);
+  console.log(`sources : gouv=${count("gouv")} osm=${count("osm")} mapatlas=${count("mapatlas")} lufop=${count("lufop")}`);
   console.log(`rayon ${radiusM} m, ${minSources} sources minimum : ${confirmed.length} confirmés, ${candidates.length} candidats`);
 }
 

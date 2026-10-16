@@ -21,13 +21,15 @@ source vont dans `candidats.csv` (colonne `sources`), à relire : l'appli les ig
 | OpenStreetMap (Overpass) | `highway=speed_camera`, `enforcement=traffic_signals` | ODbL |
 | [MapAtlas European Camera Index](https://mapatlas.eu) (signalements de conducteurs, instantané du 21/05/2024) | ~3 780 points fixes et feux rouges | CC BY 4.0, attribution à MapAtlas |
 
-Une quatrième source, **Lufop** (fichiers « POI Warner » téléchargés à la main, ~3 250 radars fixes et feux rouges), compte comme
-confirmation mais n'est ni republiée ni utilisée pour les positions (licence à vérifier, voir [LICENSES.md](LICENSES.md)) :
-`node scripts/consolidate.mjs --lufop <dossier des CSV>`. Sans ce paramètre, elle est ignorée.
+Une quatrième source, **Lufop** (fichiers « POI Warner », ~3 250 radars fixes et feux rouges, téléchargés à la main et
+versionnés dans `sources/lufop/`), compte comme les autres (licence : [LICENSES.md](LICENSES.md)). Pour la mettre à jour, remplacer les
+fichiers de ce dossier par ceux de la dernière archive « POI Warner » de Lufop (ou `--lufop <dossier>`).
 
-Résultat du dernier calcul (avec Lufop) : 3 331 radars confirmés (3 109 sans), 2 115 candidats ; 145 radars vus par Lufop
-seul ne sont pas publiés. Parmi les candidats, une partie vient de la seule liste officielle (à vérifier à la main : un
-radar officiel isolé est probablement réel, ou démonté).
+Résultat du dernier calcul : 3 331 radars confirmés (3 109 sans Lufop), 2 260 candidats. Parmi les candidats, une partie vient
+de la seule liste officielle (à vérifier à la main : un radar officiel isolé est probablement réel, ou démonté).
+
+Un workflow GitHub (`.github/workflows/consolidate.yml`) refait le calcul le 3 de chaque mois, ou à la demande (onglet Actions),
+et commite le résultat s'il change.
 
 Sources étudiées et **non utilisées** : `radars-auto.com` et `scdb.info` (sites privés ; scdb est un service payant sur
 compte, sans licence de réutilisation publiée, même si la carte se consulte librement), la carte

@@ -1,0 +1,49 @@
+# Recalcule radars.csv chaque mois : télécharge la liste officielle, OpenStreetMap et MapAtlas, les compare avec les
+# fichiers Lufop versionnés dans sources/lufop, puis commite le résultat s'il a changé.
+name: Consolidation des radars
+
+on:
+  schedule:
+    - cron: "0 4 3 * *"          # le 3 de chaque mois, 4 h UTC
+  workflow_dispatch:
+    inputs:
+      radius:
+        description: "Rayon de rapprochement en mètres"
+        default: "60"
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Tests
+        run: node --test scripts/
+
+      - name: Consolidation
+        env:
+          RADIUS: ${{ github.event.inputs.radius || '60' }}
+        run: node scripts/consolidate.mjs --radius "$RADIUS"
+
+      - name: Garde-fou (jamais moins de 2 000 radars confirmés)
+        run: |
+          n=$(grep -vc '^#' radars.csv)
+          echo "radars.csv : $n lignes"
+          test "$n" -ge 2000
+
+      - name: Commit si changement
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "Aucun changement"; exit 0; }
+          git commit -m "Mise à jour mensuelle des radars"
+          git push
