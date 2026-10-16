@@ -40,8 +40,8 @@ node scripts/consolidate.mjs --radius 100    # autre rayon (60 m par défaut)
 node --test scripts/                         # tests
 ```
 
-Attribution : données © contributeurs OpenStreetMap (ODbL) ; liste des radars fixes © ministère de l'Intérieur
-(Licence Ouverte 2.0) ; radars signalés par la communauté © [MapAtlas](https://mapatlas.eu) (CC BY 4.0).
+Chaque source est aussi republiée telle quelle dans `sources/`, sous sa propre licence ; la base dérivée (`radars.csv`)
+est sous ODbL. Détail et attributions : [LICENSES.md](LICENSES.md).
 
 ## Format de `radars.csv`
 

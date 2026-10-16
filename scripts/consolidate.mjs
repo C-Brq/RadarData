@@ -10,7 +10,7 @@
 //   mapatlas  MapAtlas European Camera Index, signalements de conducteurs (CC BY 4.0, attribution à MapAtlas)
 // Sortie : radars.csv (confirmés) et candidats.csv (une seule source, ignorés par l'appli).
 
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
@@ -197,6 +197,12 @@ async function main() {
     ...parseMapAtlas(JSON.parse(mapBuf.toString("utf8"))),
   ];
   const count = (s) => points.filter((p) => p.src === s).length;
+  // Chaque source est aussi republiée telle quelle, dans son dossier, sous sa propre licence (voir LICENSES.md).
+  await mkdir(join(outDir, "sources"), { recursive: true });
+  for (const s of SOURCES) {
+    const rows = points.filter((p) => p.src === s).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    await writeFile(join(outDir, "sources", `${s}.csv`), toCsv(rows.map((r) => ({ ...r, sources: [s] })), false));
+  }
   const { confirmed, candidates } = consolidate(points, { radiusM, minSources });
   await writeFile(join(outDir, "radars.csv"), HEADER + toCsv(confirmed, false));
   await writeFile(join(outDir, "candidats.csv"), toCsv(candidates, true));
