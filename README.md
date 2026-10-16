@@ -9,6 +9,40 @@ Adresse par défaut de l'appli :
 `https://raw.githubusercontent.com/C-Brq/RadarData/main/radars.csv`
 (modifiable dans Réglages → Données → Source « Dépôt radars »).
 
+## D'où viennent les radars
+
+`radars.csv` est **produit par `scripts/consolidate.mjs`** en comparant des sources libres. Un radar n'y entre que s'il est
+vu par **au moins deux sources indépendantes** à moins de 60 m l'un de l'autre et du même type. Les radars vus par une seule
+source vont dans `candidats.csv` (colonne `sources`), à relire : l'appli les ignore.
+
+| Source | Contenu | Licence |
+|---|---|---|
+| [Liste des radars fixes en France](https://www.data.gouv.fr/datasets/liste-des-radars-fixes-en-france/) (ministère de l'Intérieur) | ~3 170 radars fixes et feux rouges, avec limite | Licence Ouverte 2.0 |
+| OpenStreetMap (Overpass) | `highway=speed_camera`, `enforcement=traffic_signals` | ODbL |
+| [MapAtlas European Camera Index](https://mapatlas.eu) (signalements de conducteurs, instantané du 21/05/2024) | ~3 780 points fixes et feux rouges | CC BY 4.0, attribution à MapAtlas |
+
+Résultat du dernier calcul : 3 109 radars confirmés, 2 414 candidats. Parmi les candidats, 233 viennent de la seule liste
+officielle (à vérifier à la main : un radar officiel isolé est probablement réel, ou démonté).
+
+Sources étudiées et **non utilisées** : `radars-auto.com` et `scdb.info` (sites privés ; scdb est un service payant sur
+compte, sans licence de réutilisation publiée, même si la carte se consulte librement), la carte
+`radars.securite-routiere.gouv.fr` (pas d'export ni de licence de réutilisation publiés ; ses données sont celles de la liste
+du ministère), la carte `opendata.koumoul.com` (affichage de données de référence sans lien vers la source). Deux sources
+qui recopient la même liste « coïncident » toujours : elles ne comptent pas comme indépendantes.
+Types ignorés : tronçons (`ETVM`, `corridor`), passages à niveau (`ETPN`), limites variables (`adaptive`) ; les tronçons restent
+lus depuis OpenStreetMap par l'appli.
+
+Régénérer (Node 18 ou plus, aucune dépendance ; Overpass peut répondre 502 : le script réessaie) :
+
+```
+node scripts/consolidate.mjs                 # télécharge les 3 sources
+node scripts/consolidate.mjs --radius 100    # autre rayon (60 m par défaut)
+node --test scripts/                         # tests
+```
+
+Attribution : données © contributeurs OpenStreetMap (ODbL) ; liste des radars fixes © ministère de l'Intérieur
+(Licence Ouverte 2.0) ; radars signalés par la communauté © [MapAtlas](https://mapatlas.eu) (CC BY 4.0).
+
 ## Format de `radars.csv`
 
 En-tête obligatoire, séparateur virgule, UTF-8, lignes commençant par `#` ignorées.
